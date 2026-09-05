@@ -1,0 +1,21 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies & Environments
+node_modules/
+backend/venv/
+venv/
+
+# Build & Output
+dist/
+build/
+*.pyc
+__pycache__/
+backend/app/__pycache__/
+backend/app/*/__pycache__/
+
+# Logs & Temporary files
+*.log
+.env
+.env.local
