@@ -1,7 +1,7 @@
 # Baghewala Field Digital Twin (v2.0)
-## A Plain-Language Guide to the Heavy-Oil Well Simulation & Optimization Dashboard
+## A Plain-Language & Technical Guide to the Heavy-Oil Well Simulation & Optimization Dashboard
 
-> **Covers**: The real-world Baghewala oil field, the physical production challenges, the 2-Stage Hybrid Neural Network + Physics Architecture, the 5 dedicated interface routes, a full glossary of dashboard terms, and how real-time data flows through the system.
+> **Covers**: The real-world Baghewala oil field, physical production challenges, the 2-Stage Hybrid Neural Network + Physics Architecture, detailed AI model specifications and operating conditions, the 5 dedicated interface routes, a full dashboard glossary, and system data flows.
 > 
 > **Live Prototype**: [https://baghewala-digital-twin.vercel.app](https://baghewala-digital-twin.vercel.app)  
 > **Source Code**: [https://github.com/bharatmalik-cs/Baghewala-digital-twin](https://github.com/bharatmalik-cs/Baghewala-digital-twin)
@@ -54,8 +54,6 @@ flowchart TD
 ### Step 2 — Sucker Rod Pumping (SRP)
 Once crude is mobile, a reciprocating mechanical pumpjack (the classic "nodding donkey") lifts the oil. A surface motor moves a long steel rod string up and down inside the tubing. Valves at the downhole pump barrel trap oil on the upstroke and push it toward the surface with every cycle.
 
-**The Engineering Challenge**: The pump must operate at a speed (Strokes Per Minute - SPM) and choke valve setting that matches how fast heated crude is actually flowing into the pump barrel. Running too fast or with incorrect back-pressure damages downhole equipment—which the software's prescriptive engine prevents.
-
 ---
 
 ## 3. The Six Problems the Software Watches For
@@ -92,18 +90,6 @@ The digital twin continuously evaluates physical telemetry and flags warning sig
 
 The dashboard is structured into 5 dedicated routes:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       BAGHEWALA DIGITAL TWIN UI                             │
-├───────────────┬─────────────────────────────────────────────────────────────┤
-│ 📊 Operations │ Live field KPIs, well selector, economic inputs, controls.  │
-│ ♨️ CSS Cycle   │ Thermal plume expansion (Marx-Langenheim) & viscosity curve.│
-│ 🏗️ Lift Mech   │ 1D Wave Equation Dynacard viewer & polished rod metrics.     │
-│ 📋 Audit Log  │ Timestamped decision audit log of all operator adjustments. │
-│ 🧠 AI Workbench│ 0ms Pure JS Neural Network evaluator & safety gate view.    │
-└───────────────┴─────────────────────────────────────────────────────────────┘
-```
-
 1. **Operations Desk (`/`)**: Central control room displaying well status, oil production (BOPD), steam rate (TPD), economic parameter inputs (crude/steam/electricity prices), and physics recommendations.
 2. **CSS Cycle Plan (`/css-cycle`)**: Dedicated thermal recovery workspace plotting heated radius ($r_h$), steam quality, and Andrade/Walther viscosity reduction curves ($3,500\,\text{cP} \to <50\,\text{cP}$).
 3. **Artificial Lift (`/artificial-lift`)**: Downhole mechanical view running the 1D Gibbs Damped Wave Equation solver to present surface vs. downhole Dynacard load-displacement loops.
@@ -129,11 +115,6 @@ The dashboard is structured into 5 dedicated routes:
 - **Thermal Plume / Heated Radius (m)**: Distance steam heat penetrates into reservoir rock (~15–25m).
 - **iSOR / cSOR (Steam-to-Oil Ratio)**: Barrels of steam used per barrel of oil produced ('i' = instantaneous; 'c' = cumulative).
 
-### Mechanical & Hydraulic Terms
-- **Dynacard**: Plot of rod load vs. position used to diagnose downhole pump health 1,000m underground.
-- **Polished Rod**: Smooth surface rod segment moving through the wellhead stuffing box.
-- **Hydraulic Pressures**: Pressure drop progression: Reservoir (~110 bar) $\to$ Pump Intake (~55 bar) $\to$ Wellhead (~18 bar) $\to$ Separator (5 bar).
-
 ### Hybrid AI & Optimization Terms
 - **2-Stage Hybrid Architecture**: Coupling fast Neural Network candidate screening with First-Principles Physics safety verification.
 - **MLP Regressor (`margin_regressor.json`)**: Pre-trained Neural Network predicting daily margin ($/day).
@@ -143,18 +124,19 @@ The dashboard is structured into 5 dedicated routes:
 
 ---
 
-## 6. How the 2-Stage Hybrid Neural Network + Physics Architecture Works
+## 6. Use of AI Models & Detailed Operating Conditions
 
-### Is an AI Model Used in the New Version?
-**YES.** Version 2.0 incorporates a **2-Stage Hybrid AI Architecture** combining machine learning with petroleum engineering physics:
+### 6.1 Neural Network Model Architecture & Specifications
+
+Version 2.0 incorporates a **2-Stage Hybrid AI Architecture** combining machine learning with petroleum engineering physics:
 
 ```mermaid
 flowchart LR
-    A["Operating Parameters (SPM, Choke, Viscosity, Costs)"] --> Stage1
+    A["Operating Vector x (Viscosity, Soak, SPM, Choke, Steam)"] --> Stage1
     subgraph Stage1 ["Stage 1: Neural Network Candidate Screening (0ms)"]
         B["MLP Regressor (margin_regressor.json)"] 
         C["MLP Classifier (risk_classifier.json)"]
-        B & C --> D["Shortlist Top 5 Candidates from 2,025 Fine Options"]
+        B & C --> D["Shortlist Top 10 Candidates from 2,025 Fine Options"]
     end
     Stage1 --> Stage2
     subgraph Stage2 ["Stage 2: Physics Verification Safety Gate"]
@@ -165,13 +147,78 @@ flowchart LR
     end
 ```
 
-### Stage 1: Pure NumPy & Pure JS Neural Network (0ms Inference)
-- **Zero Heavy Dependencies**: Runs using a lightweight forward-pass matrix multiplication engine (`MLPFromJSON`) implemented in pure NumPy (`inference_numpy.py`) for Python and pure Vanilla JS (`inference.js`) for the browser.
-- **Ultra-Fast Candidate Search**: Evaluates **2,025 fine grid candidates** in **0 milliseconds**, predicting profit margins and equipment risks instantly in client browser memory or serverless functions.
+#### 1. Margin Regressor Neural Network (`margin_regressor.json`)
+- **Type**: Multi-Layer Perceptron (MLP) Regressor.
+- **Input Feature Vector $\mathbf{x} \in \mathbb{R}^6$**:
+  1. `oil_viscosity_cp`: Downhole crude dynamic viscosity ($\text{cP}$).
+  2. `soak_decay_factor`: Thermal decay factor ($e^{-0.08 \times \text{days\_in\_phase}}$).
+  3. `reservoir_pressure_bar`: Formation static pressure ($\text{bar}$).
+  4. `candidate_spm`: Candidate pump speed ($2.0 - 10.0 \, \text{SPM}$).
+  5. `candidate_choke_pct`: Candidate choke opening ($15.0 - 100.0\%$).
+  6. `current_steam_tpd`: Thermal steam rate ($\text{tonnes/day}$).
+- **Transformation Formula**:
+  $$\mathbf{x}_{\text{norm}} = \frac{\mathbf{x} - \boldsymbol{\mu}_{\text{scaler}}}{\boldsymbol{\sigma}_{\text{scaler}}}$$
+  $$\mathbf{h}_1 = \text{ReLU}\left(\mathbf{x}_{\text{norm}} \mathbf{W}_1 + \mathbf{b}_1\right)$$
+  $$\hat{y}_{\text{margin}} = \mathbf{h}_1 \mathbf{W}_2 + \mathbf{b}_2 \quad (\text{USD / day margin})$$
+- **Inference Speed**: Evaluates 2,025 candidate combinations in **$0\,\text{ms}$** using pure matrix multiplication in Python (`inference_numpy.py`) and JavaScript (`inference.js`).
 
-### Stage 2: First-Principles Physics Safety Gate
-- **Physics Authority**: While the Neural Network quickly screens candidate settings, **First-Principles Physics models (`CSSModel`, `SRPModel`, `HydraulicsModel`) remain the sole authority** for safety checks.
-- **Risk Prevention**: If the Neural Network recommends a high-margin setpoint that violates physical downhole constraints (e.g. fluid pound or gas lock), the Physics Safety Gate overrides or penalizes the candidate before it reaches the operator console.
+#### 2. Risk Classifier Neural Network (`risk_classifier.json`)
+- **Type**: Multi-Layer Perceptron (MLP) Classifier with Softmax output.
+- **Input Feature Vector**: Same 6-feature vector $\mathbf{x}$.
+- **Output Classes**: `NORMAL`, `FLUID_POUND`, `GAS_LOCK`, `VISCOUS_DRAG`.
+- **Softmax Probability**:
+  $$P(\text{Class}_k) = \frac{e^{z_k}}{\sum_{j=1}^{4} e^{z_j}}$$
+
+---
+
+### 6.2 Operating Conditions & Threshold Rules
+
+The software evaluates candidate setpoints against specific physical conditions and financial penalty thresholds:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      OPERATING CONDITIONS & THRESHOLDS                      │
+├─────────────────┬──────────────────────┬─────────────────┬──────────────────┤
+│ Anomaly Risk    │ Physical Condition   │ Fillage Factor  │ Daily Penalty    │
+├─────────────────┼──────────────────────┼─────────────────┼──────────────────┤
+│ FLUID_POUND     │ SPM > 5.5 & Fillage  │      0.72       │    $450 / day    │
+│                 │ drops below 75%      │ (28% capacity)  │ (Gearbox impact) │
+├─────────────────┼──────────────────────┼─────────────────┼──────────────────┤
+│ GAS_LOCK        │ Choke < 75% with gas │      0.78       │    $300 / day    │
+│                 │ in pump barrel       │ (22% capacity)  │ (0% efficiency)  │
+├─────────────────┼──────────────────────┼─────────────────┼──────────────────┤
+│ VISCOUS_DRAG    │ SPM > 7.5 & Crude    │      0.86       │ $F_v \propto     │
+│                 │ viscosity > 500 cP   │ (14% capacity)  │ \text{SPM}^{1.35}│
+└─────────────────┴──────────────────────┴─────────────────┴──────────────────┘
+```
+
+#### Rule 1: Bounded Candidate Grid Generation
+- **Condition**: Generated only during `PRODUCTION` phase.
+- **Grid Range**: 45 SPM steps ($2.0 \to 10.0$) $\times$ 45 Choke steps ($15\% \to 100\%$) = **2,025 fine candidate setpoints**.
+
+#### Rule 2: Fluid Pound Mechanical Damage Penalty
+- **Condition Trigger**: Pump speed $\text{SPM} > 5.5$ when fluid inflow is insufficient to keep pump barrel full ($< 75\%$ fillage).
+- **Mathematical Penalty**: Applies a $28\%$ capacity deduction ($\text{fillage\_factor} = 0.72$) and subtracts a **$\$450.00/\text{day}$** mechanical stress penalty from the objective function.
+- **Corrective Proposal**: Recommends lowering SPM to **$4.5 - 5.5 \, \text{SPM}$**.
+
+#### Rule 3: Gas Lock Efficiency Loss Penalty
+- **Condition Trigger**: Choke opening $\text{Choke} < 75\%$ when free gas breaks out in the pump barrel.
+- **Mathematical Penalty**: Applies a $22\%$ volumetric efficiency deduction ($\text{fillage\_factor} = 0.78$) and subtracts a **$\$300.00/\text{day}$** economic penalty.
+- **Corrective Proposal**: Recommends widening choke aperture by **$15\% - 20\%$**.
+
+#### Rule 4: Viscous Friction Drag Motor Load Penalty
+- **Condition Trigger**: High pump speed $\text{SPM} > 7.5$ when crude viscosity $\mu > 500 \, \text{cP}$.
+- **Mathematical Penalty**: Applies a $14\%$ drag deduction ($\text{fillage\_factor} = 0.86$), and increases motor power demand according to:
+  $$\text{Power}_{\text{cand}} = \text{Power}_{\text{base}} \times \left(\frac{\text{SPM}_{\text{cand}}}{\text{SPM}_{\text{base}}}\right)^{1.35}$$
+- **Corrective Proposal**: Caps recommended SPM to maintain motor thermal limits.
+
+#### Rule 5: First-Principles Physics Safety Gate Overrule Rule
+- **Condition Trigger**: If the Neural Network predicts a candidate setting as `NORMAL` risk, but the First-Principles Physics models (`CSSModel`, `SRPModel`, `HydraulicsModel`) detect a downhole physical violation (such as fluid pound or gas lock):
+- **Action**: **The Physics Safety Gate OVERRULES the Neural Network**. The candidate is penalized and rejected, ensuring zero unsafe commands reach field equipment.
+
+#### Rule 6: Human-in-the-Loop Operator Gate Condition
+- **Condition Trigger**: Every AI-generated setpoint recommendation carries status `REVIEW_REQUIRED`.
+- **Action**: Recommendations are strictly advisory. No setpoint is ever automatically executed to physical control hardware without explicit human operator confirmation on the console.
 
 ---
 
