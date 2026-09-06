@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Bot, ClipboardCheck, Download, Flame, Gauge, LoaderCircle, MapPin, Play, Save, Send, ShieldCheck, SlidersHorizontal, Thermometer, Waves, X } from 'lucide-react';
+import { Activity, AlertTriangle, Bot, ClipboardCheck, Download, Flame, Gauge, LoaderCircle, MapPin, Pause, Play, Save, Send, ShieldCheck, SlidersHorizontal, Thermometer, Waves, X } from 'lucide-react';
 import './console.css';
 import { applyOptimization, connectWellWebSocket, fetchFieldSummary, fetchWellActions, fetchWellTelemetry, sendChatMessage, updateWellControls } from './services/api';
 
@@ -10,12 +10,14 @@ export default function App() {
   const [field, setField] = useState(null), [wellId, setWellId] = useState('BGW-01'), [t, setT] = useState(null), [actions, setActions] = useState([]);
   const [connected, setConnected] = useState(false), [busy, setBusy] = useState(false), [notice, setNotice] = useState(null), [reply, setReply] = useState(''), [question, setQuestion] = useState('');
   const [draft, setDraft] = useState({ spm: 0, choke_pct: 70 }), [market, setMarket] = useState({ crude_price_usd_bbl: 75, steam_cost_usd_ton: 18, electricity_cost_usd_kwh: .12 });
+  const [paused, setPaused] = useState(false);
   const goTo = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const getActions = async id => { const r = await fetchWellActions(id || wellId); if (r) setActions(r.actions || []); };
-  useEffect(() => { const load = async () => setField(await fetchFieldSummary()); load(); const timer = setInterval(load, 6000); return () => clearInterval(timer); }, []);
+  useEffect(() => { const load = async () => setField(await fetchFieldSummary()); load(); const timer = setInterval(load, 8000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     let ws;
     const poll = async () => {
+      if (paused) return;
       const r = await fetchWellTelemetry(wellId);
       if (r) { setT(r); setConnected(true); }
     };
@@ -23,18 +25,18 @@ export default function App() {
       const r = await fetchWellTelemetry(wellId);
       if (r) { setT(r); setConnected(true); setDraft({ spm:r.spm, choke_pct:r.choke_pct }); }
       getActions(wellId);
-      ws = connectWellWebSocket(wellId, x => { setT(x); setConnected(true); }, () => setConnected(false));
+      ws = connectWellWebSocket(wellId, x => { if (!paused) { setT(x); setConnected(true); } }, () => setConnected(false));
     })();
-    const timer = setInterval(poll, 2500);
+    const timer = setInterval(poll, 6000);
     return () => { ws?.close(); clearInterval(timer); };
-  }, [wellId]);
+  }, [wellId, paused]);
   const save = async updates => { setBusy(true); const r = await updateWellControls(wellId, updates); setBusy(false); if (r) { setT(r); setDraft({ spm:r.spm, choke_pct:r.choke_pct }); getActions(); setNotice(['success','Setpoint saved to the simulated twin.']); } else setNotice(['error','Could not save. Check the FastAPI service.']); };
   const evaluate = async () => { setBusy(true); const r = await applyOptimization(wellId, market); setBusy(false); if (r) { setT(r); getActions(); setNotice(['info','Scenario evaluated. Review its risk flag before accepting.']); } else setNotice(['error','Scenario evaluation failed. Check the FastAPI service.']); };
   const ask = async preset => { const q = preset || question; if (!q) return; setBusy(true); setQuestion(''); const r = await sendChatMessage(wellId, q); setBusy(false); setReply(r?.response || 'Assistant unavailable.'); };
   const exportData = () => { const url = URL.createObjectURL(new Blob([JSON.stringify({ exported_at:new Date().toISOString(), source:'SIMULATED_DEMO', telemetry:t, actions }, null, 2)],{type:'application/json'})); const a=document.createElement('a'); a.href=url;a.download=`${wellId}-twin-snapshot.json`;a.click();URL.revokeObjectURL(url); };
   const css=t?.css_physics, srp=t?.srp_physics, hyd=t?.hydraulics, opt=t?.optimization, fault=srp?.anomaly_detected && !['NORMAL','INJECTION_STANDBY'].includes(srp.anomaly_detected);
   return <main className="ops-shell"><aside className="ops-sidebar"><div className="brand"><div className="brand-mark"><Waves size={19}/></div><div><b>OILFIELD</b><span>OPERATIONS TWIN</span></div></div><div className="site-label"><MapPin size={14}/><span>Baghewala · Rajasthan</span></div><nav><button className="active" onClick={()=>goTo('operations')}><Activity size={17}/>Operations desk</button><button onClick={()=>goTo('css-cycle')}><Flame size={17}/>CSS cycle plan</button><button onClick={()=>goTo('artificial-lift')}><Gauge size={17}/>Artificial lift</button><button onClick={()=>goTo('decision-log')}><ClipboardCheck size={17}/>Decision log</button></nav><div className="side-foot"><span className="eyebrow">Data environment</span><strong><i className={`status-dot ${connected?'online':''}`}/> SIMULATED TWIN</strong><p>Hackathon demonstration only. Field deployment needs historian integration and operator approval.</p></div></aside>
-  <section className="ops-content"><header className="topbar"><div><span className="eyebrow">Well-to-surface decision support</span><h1>Baghewala operations desk</h1><p>CSS thermal recovery and SRP lift performance in one operating view.</p></div><div className="top-actions"><span className={`connection ${connected?'live':''}`}><i className="status-dot"/>{connected?'Live simulated feed':'Connecting'}</span><button className="button secondary" onClick={exportData}><Download size={15}/>Export snapshot</button></div></header>
+  <section className="ops-content"><header className="topbar"><div><span className="eyebrow">Well-to-surface decision support</span><h1>Baghewala operations desk</h1><p>CSS thermal recovery and SRP lift performance in one operating view.</p></div><div className="top-actions"><button className="button secondary" onClick={()=>setPaused(!paused)}>{paused?<Play size={15}/>:<Pause size={15}/>}{paused?'Resume feed':'Pause feed'}</button><span className={`connection ${connected && !paused?'live':''}`}><i className="status-dot"/>{paused?'Stream paused':connected?'Live simulated feed':'Connecting'}</span><button className="button secondary" onClick={exportData}><Download size={15}/>Export snapshot</button></div></header>
   {notice&&<div className={`notice ${notice[0]}`}><span>{notice[1]}</span><button onClick={()=>setNotice(null)}><X size={15}/></button></div>}
   <section className="well-strip"><div className="well-strip-head"><div><span className="eyebrow">Field inventory</span><strong>{field?`${field.active_wells_count} modelled wells`:'Loading inventory'}</strong></div><span>OIL reference: Jodhpur Sandstone, ~1,150 m</span></div><div className="well-tabs">{(field?.wells||[]).map(w=><button key={w.well_id} onClick={()=>setWellId(w.well_id)} className={w.well_id===wellId?'selected':''}><i className={`well-icon ${w.anomaly!=='NORMAL'&&w.anomaly!=='INJECTION_STANDBY'?'warning':''}`}>{w.anomaly!=='NORMAL'&&w.anomaly!=='INJECTION_STANDBY'?<AlertTriangle size={14}/>:<Activity size={14}/>}</i><span><b>{w.well_id}</b><small>{phases[w.phase]||w.phase}</small></span><em>{w.phase==='PRODUCTION'?`${n(w.oil_rate_bopd,1)} BOPD`:'CSS active'}</em></button>)}</div></section>
   <section className="hero-grid"><article className="well-card"><div className="card-header"><div><span className="eyebrow">Selected asset</span><h2>{t?.well_name||wellId}</h2></div><span className={`pill ${fault?'danger':'good'}`}>{fault?srp.anomaly_detected.replace('_',' '):t?'OPERATING NORMALLY':'LOADING'}</span></div><div className="metric-row"><Metric label="Oil rate" value={`${n(t?.oil_rate_bopd,1)} BOPD`} icon={<Activity/>}/><Metric label="Pump speed" value={`${n(t?.spm,1)} SPM`} icon={<Gauge/>}/><Metric label="Pump fillage" value={`${n(srp?.pump_fillage_pct)}%`} icon={<Waves/>}/><Metric label="Reservoir temp." value={`${n(css?.reservoir_temp_c)} °C`} icon={<Thermometer/>}/></div><div className="well-path"><Point label="Reservoir" value={`${n(hyd?.reservoir_pressure_bar,1)} bar`}/><Point label="Pump intake" value={`${n(hyd?.pump_intake_pressure_bar,1)} bar`}/><Point label="Wellhead" value={`${n(hyd?.wellhead_pressure_bar,1)} bar`}/><Point label="Separator" value={`${n(hyd?.separator_pressure_bar,1)} bar`}/></div></article><article className="shift-card"><span className="eyebrow">Shift decision</span><h2>{fault?'Protect the rod pump before increasing drawdown.':'Maintain surveillance; test the economic operating window.'}</h2><p>{actions[0]?.detail||'No operator actions recorded for this well.'}</p><div className="shift-footer"><ShieldCheck size={17}/><span>Human approval remains in the control path</span></div></article></section>

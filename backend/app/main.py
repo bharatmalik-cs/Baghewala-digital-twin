@@ -88,7 +88,7 @@ async def websocket_telemetry(websocket: WebSocket, well_id: str):
         while True:
             telem = simulator.get_well_telemetry(well_id)
             await websocket.send_json(telem)
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(6.0)
     except WebSocketDisconnect:
         pass
     except Exception as e:
