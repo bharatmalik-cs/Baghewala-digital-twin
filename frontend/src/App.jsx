@@ -13,7 +13,21 @@ export default function App() {
   const goTo = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const getActions = async id => { const r = await fetchWellActions(id || wellId); if (r) setActions(r.actions || []); };
   useEffect(() => { const load = async () => setField(await fetchFieldSummary()); load(); const timer = setInterval(load, 6000); return () => clearInterval(timer); }, []);
-  useEffect(() => { let ws; (async () => { const r = await fetchWellTelemetry(wellId); if (r) { setT(r); setDraft({ spm:r.spm, choke_pct:r.choke_pct }); } getActions(wellId); ws = connectWellWebSocket(wellId, x => { setT(x); setConnected(true); }, () => setConnected(false)); })(); return () => ws?.close(); }, [wellId]);
+  useEffect(() => {
+    let ws;
+    const poll = async () => {
+      const r = await fetchWellTelemetry(wellId);
+      if (r) { setT(r); setConnected(true); }
+    };
+    (async () => {
+      const r = await fetchWellTelemetry(wellId);
+      if (r) { setT(r); setConnected(true); setDraft({ spm:r.spm, choke_pct:r.choke_pct }); }
+      getActions(wellId);
+      ws = connectWellWebSocket(wellId, x => { setT(x); setConnected(true); }, () => setConnected(false));
+    })();
+    const timer = setInterval(poll, 2500);
+    return () => { ws?.close(); clearInterval(timer); };
+  }, [wellId]);
   const save = async updates => { setBusy(true); const r = await updateWellControls(wellId, updates); setBusy(false); if (r) { setT(r); setDraft({ spm:r.spm, choke_pct:r.choke_pct }); getActions(); setNotice(['success','Setpoint saved to the simulated twin.']); } else setNotice(['error','Could not save. Check the FastAPI service.']); };
   const evaluate = async () => { setBusy(true); const r = await applyOptimization(wellId, market); setBusy(false); if (r) { setT(r); getActions(); setNotice(['info','Scenario evaluated. Review its risk flag before accepting.']); } else setNotice(['error','Scenario evaluation failed. Check the FastAPI service.']); };
   const ask = async preset => { const q = preset || question; if (!q) return; setBusy(true); setQuestion(''); const r = await sendChatMessage(wellId, q); setBusy(false); setReply(r?.response || 'Assistant unavailable.'); };

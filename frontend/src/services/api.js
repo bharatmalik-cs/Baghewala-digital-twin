@@ -1,6 +1,9 @@
 // Defaults keep local development zero-config; deployments can set VITE_API_BASE.
-const BASE_URL = import.meta.env.VITE_API_BASE || "http://localhost:8000";
-const WS_URL = BASE_URL.replace(/^http/, "ws");
+const BASE_URL = import.meta.env.VITE_API_BASE !== undefined
+  ? import.meta.env.VITE_API_BASE
+  : (import.meta.env.DEV ? "http://localhost:8000" : "");
+const WS_URL = BASE_URL ? BASE_URL.replace(/^http/, "ws") : (window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host;
+
 
 export const fetchFieldSummary = async () => {
   try {
@@ -81,20 +84,25 @@ export const sendChatMessage = async (wellId, message) => {
 };
 
 export const connectWellWebSocket = (wellId, onData, onError) => {
-  const ws = new WebSocket(`${WS_URL}/ws/telemetry/${wellId}`);
-  
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onData(data);
-    } catch (err) {
-      console.error("WS message parse error:", err);
-    }
-  };
+  try {
+    const ws = new WebSocket(`${WS_URL}/ws/telemetry/${wellId}`);
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onData(data);
+      } catch (err) {
+        console.error("WS message parse error:", err);
+      }
+    };
 
-  ws.onerror = (err) => {
+    ws.onerror = (err) => {
+      if (onError) onError(err);
+    };
+
+    return ws;
+  } catch (err) {
     if (onError) onError(err);
-  };
-
-  return ws;
+    return null;
+  }
 };
