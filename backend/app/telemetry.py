@@ -151,6 +151,32 @@ class BaghewalaFieldSimulator:
             "choke_pct": w["choke_pct"]
         }, **economics)
 
+        # 5. Run Neural Network MLP Surrogate Inference (scikit-learn JSON model forward pass)
+        try:
+            from app.mlp_inference import get_mlp_models
+            import math
+            margin_model, risk_model = get_mlp_models()
+            if margin_model and risk_model:
+                feature_vec = [
+                    float(viscosity_cp),
+                    float(math.exp(-0.08 * w.get("days_in_phase", 1.0))),
+                    float(hyd_res.get("reservoir_pressure_bar", 110.0)),
+                    float(w["spm"]),
+                    float(w["choke_pct"]),
+                    float(w["steam_rate_tpd"])
+                ]
+                nn_margin = margin_model.predict_margin(feature_vec)
+                nn_risk_label, nn_risk_probs = risk_model.predict_risk(feature_vec)
+                nn_res = {
+                    "predicted_margin_usd_day": round(nn_margin, 2),
+                    "predicted_risk_flag": nn_risk_label,
+                    "class_probabilities": {k: round(v, 3) for k, v in nn_risk_probs.items()}
+                }
+            else:
+                nn_res = None
+        except Exception:
+            nn_res = None
+
         return {
             "timestamp": time.time(),
             "well_id": w["well_id"],
@@ -165,11 +191,12 @@ class BaghewalaFieldSimulator:
             "css_physics": css_res,
             "srp_physics": srp_res,
             "hydraulics": hyd_res,
-            "optimization": opt_res
-            ,"data_provenance": {
+            "optimization": opt_res,
+            "neural_network_surrogate": nn_res,
+            "data_provenance": {
                 "mode": "SIMULATED_DEMO",
-                "refresh_seconds": 1.2,
-                "models": ["CSS thermal surrogate", "SRP dynacard mechanics", "hydraulics pressure model", "bounded optimization"],
+                "refresh_seconds": 6.0,
+                "models": ["CSS thermal surrogate", "SRP dynacard mechanics", "hydraulics pressure model", "MLP Neural Network surrogate", "bounded optimization"],
                 "operator_note": "Recommendations require operator review; connect historian and validate against field tests before operational use."
             }
         }
